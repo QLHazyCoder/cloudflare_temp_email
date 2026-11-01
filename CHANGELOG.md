@@ -11,6 +11,7 @@
 ### Features
 
 - feat: |Mail API| 为 `raw_mails` 新增通用字段 `original_recipient`，从可信邮件头和转发痕迹中推断原始/转发前收件邮箱，并保持 `/admin/mails` 现有 `address` 查询语义不变
+- feat: |Mail API| `/admin/mails` 新增可选查询参数 `original_recipient`，在数据库中按推断出的原始收件邮箱精确筛选（忽略大小写），可与 `address` 同时使用；按注册邮箱查信的客户端只会拿到并解压目标邮箱的邮件，避免无筛选分页解压过多邮件导致 Worker 超出资源限制（Error 1102）
 
 - feat: |Admin 邮件| 在后台邮件列表新增“一键清空全部邮件”操作，并新增 `DELETE /admin/mails` 接口；可通过可选 `address` 参数只清空单个邮箱地址的收件箱
 - feat: |Frontend| 将邮箱地址凭证弹窗升级为“地址凭证与连接方式”，复用普通用户与 admin 创建邮箱结果弹窗；支持通过 `ENABLE_AGENT_EMAIL_INFO` 展示 AI Agent 接入信息，并通过 `SMTP_IMAP_PROXY_CONFIG` 展示 SMTP/IMAP 客户端连接信息

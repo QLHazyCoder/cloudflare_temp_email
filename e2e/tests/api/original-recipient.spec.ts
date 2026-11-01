@@ -118,4 +118,34 @@ test.describe('Original recipient field', () => {
     const mail = await getSeededAdminMail(request, address, messageId);
     expect(mail.original_recipient).toBe(address);
   });
+
+  test('filters /admin/mails by original_recipient', async ({ request }) => {
+    const target = await seedRawMail(request, {
+      headers: ['X-Original-To: filter-target@duck.com'],
+      subject: 'Original Recipient Filter Target',
+    });
+    const other = await seedRawMail(request, {
+      headers: ['X-Original-To: filter-other@duck.com'],
+      subject: 'Original Recipient Filter Other',
+    });
+
+    const res = await request.get(
+      `${WORKER_URL}/admin/mails?limit=10&offset=0&original_recipient=${encodeURIComponent(' Filter-Target@Duck.com ')}`,
+    );
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+    const ids = body.results.map((item: any) => item.message_id);
+    expect(ids).toContain(target.messageId);
+    expect(ids).not.toContain(other.messageId);
+    for (const item of body.results) {
+      expect(item.original_recipient).toBe('filter-target@duck.com');
+    }
+
+    const combined = await request.get(
+      `${WORKER_URL}/admin/mails?limit=10&offset=0&address=${encodeURIComponent('nobody@email.example.com')}&original_recipient=filter-target@duck.com`,
+    );
+    expect(combined.ok()).toBe(true);
+    const combinedBody = await combined.json();
+    expect(combinedBody.results.map((item: any) => item.message_id)).not.toContain(target.messageId);
+  });
 });

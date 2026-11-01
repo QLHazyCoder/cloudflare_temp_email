@@ -21,7 +21,7 @@ res = requests.get(
 
 ## Admin Mail API
 
-Supports `address` filter
+Supports `address` and `original_recipient` filters
 
 ```python
 import requests
@@ -32,7 +32,9 @@ querystring = {
     "limit":"20",
     "offset":"0",
     # address is optional parameter
-    "address":"xxxx@awsl.uk"
+    "address":"xxxx@awsl.uk",
+    # original_recipient is optional, filters by the original/pre-forwarding recipient
+    # "original_recipient":"xxxx@duck.com",
 }
 
 headers = {
@@ -46,6 +48,8 @@ print(response.json())
 ```
 
 Results may include `original_recipient`, an inferred original/pre-forwarding recipient from trusted mail headers or forwarding traces. When no reliable forwarded recipient can be inferred, it falls back to the mailbox address actually delivered to the Worker. `address` still means the mailbox address actually delivered to the Worker.
+
+The optional `original_recipient` parameter filters on that field in the database (exact match, ignoring case and surrounding whitespace) and can be combined with `address` (both must match). When several forwarding addresses share one delivery mailbox, querying by `original_recipient` returns only the target mailbox's mail, without scanning unfiltered pages of the whole table.
 
 **Note**: `/admin/mails` follows the same design as `/api/mails`: it returns stored raw MIME data. If you need readable subject/body, parse the raw content on the client side.
 

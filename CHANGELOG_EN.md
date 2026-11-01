@@ -11,6 +11,7 @@
 ### Features
 
 - feat: |Mail API| Add the generic `original_recipient` field to `raw_mails`, inferred from trusted mail headers and forwarding traces while keeping the existing `/admin/mails` `address` query semantics unchanged
+- feat: |Mail API| Add the optional `original_recipient` query parameter to `/admin/mails`, filtering in the database by the inferred original recipient (case-insensitive exact match) and combinable with `address`; clients that look up mail by registration email now receive and decompress only the target mailbox's mail, instead of unfiltered pages that could exceed Worker resource limits (Error 1102)
 
 - feat: |Admin Mail| Add a one-click "Clear All Mails" action to the admin mail list, backed by `DELETE /admin/mails` with optional `address` filtering for clearing a single mailbox
 - feat: |Frontend| Upgrade the address credential dialog to "Address Credentials & Connection Methods" and reuse it for both normal users and admin-created addresses; support showing AI Agent access via `ENABLE_AGENT_EMAIL_INFO` and SMTP/IMAP client settings via `SMTP_IMAP_PROXY_CONFIG`

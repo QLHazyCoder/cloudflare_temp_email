@@ -21,7 +21,7 @@ res = requests.get(
 
 ## admin 邮件 API
 
-支持 `address` 过滤
+支持 `address` 与 `original_recipient` 过滤
 
 ```python
 import requests
@@ -32,7 +32,9 @@ querystring = {
     "limit":"20",
     "offset":"0",
     # address 为可选参数
-    "address":"xxxx@awsl.uk"
+    "address":"xxxx@awsl.uk",
+    # original_recipient 为可选参数，按原始/转发前收件邮箱筛选
+    # "original_recipient":"xxxx@duck.com",
 }
 
 headers = {
@@ -46,6 +48,8 @@ print(response.json())
 ```
 
 返回结果中可能包含 `original_recipient` 字段，表示系统从可信邮件头或转发痕迹中推断出的原始/转发前收件邮箱；无法可靠推断转发前收件邮箱时，会回填 Worker 实际收到邮件时的投递邮箱。`address` 仍表示 Worker 实际收到邮件时的投递邮箱。
+
+可选参数 `original_recipient` 按该字段在数据库中精确筛选（忽略大小写和首尾空格），可与 `address` 同时使用，两者为“且”关系。多个转发邮箱共用一个收件邮箱时，按 `original_recipient` 查询只会返回目标邮箱的邮件，不需要无筛选地翻页扫描整张表。
 
 **注意**：`/admin/mails` 与 `/api/mails` 一致，返回的是邮件数据库中的 raw MIME 内容；如需正文/主题等可读字段，请在客户端自行解析 `raw`。
 

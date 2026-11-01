@@ -3,12 +3,22 @@ import { handleMailListQuery } from "../common";
 
 export default {
     getMails: async (c: Context<HonoCustomType>) => {
-        const { address, limit, offset } = c.req.query();
-        const addressQuery = address ? `address = ?` : "";
-        const addressParams = address ? [address] : [];
-        const filterQuerys = [addressQuery].filter((item) => item).join(" and ");
-        const finalQuery = filterQuerys.length > 0 ? `where ${filterQuerys}` : "";
-        const filterParams = [...addressParams]
+        const { address, original_recipient, limit, offset } = c.req.query();
+        // original_recipient is stored trimmed and lowercased, so normalize the
+        // query the same way. Filtering in SQL means only matching rows are
+        // decompressed, instead of every row of an unfiltered page.
+        const originalRecipient = (original_recipient || "").trim().toLowerCase();
+        const filters: string[] = [];
+        const filterParams: string[] = [];
+        if (address) {
+            filters.push("address = ?");
+            filterParams.push(address);
+        }
+        if (originalRecipient) {
+            filters.push("original_recipient = ?");
+            filterParams.push(originalRecipient);
+        }
+        const finalQuery = filters.length > 0 ? `where ${filters.join(" and ")}` : "";
         return await handleMailListQuery(c,
             `SELECT * FROM raw_mails ${finalQuery}`,
             `SELECT count(*) as count FROM raw_mails ${finalQuery}`,
