@@ -29,6 +29,8 @@
 
 ### Improvements
 
+- chore: |CI| `Upstream Sync` 移除每周定时触发，仅保留手动触发；本分支含自定义改动，上游同步改为按需手动执行并在本地核对合并结果
+
 ## v1.8.0
 
 ### Features

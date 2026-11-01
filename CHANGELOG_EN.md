@@ -29,6 +29,8 @@
 
 ### Improvements
 
+- chore: |CI| Remove the weekly schedule from `Upstream Sync`, keeping manual dispatch only; this fork carries local changes, so upstream syncing is done on demand and reviewed locally before merging
+
 ## v1.8.0
 
 ### Features

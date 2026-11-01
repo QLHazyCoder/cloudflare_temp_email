@@ -1,8 +1,8 @@
 name: Upstream Sync
 
 on:
-  schedule:
-    - cron: "0 0 * * 1"
+  # 本分支带有自定义改动（original_recipient 查询等），不跟随上游自动同步。
+  # 需要同步时手动触发本 workflow，再本地核对合并结果。
   workflow_dispatch:
 
 jobs:
