@@ -4,6 +4,7 @@ import { Jwt } from 'hono/utils/jwt'
 import i18n from '../i18n'
 import { getBooleanValue } from '../utils'
 import { newAddress, handleListQuery } from '../common'
+import { unbindTelegramByAddress } from '../telegram_api/common'
 
 const listAddresses = async (c: Context<HonoCustomType>) => {
     const { limit, offset, query, sort_by, sort_order } = c.req.query();
@@ -70,29 +71,42 @@ const createNewAddress = async (c: Context<HonoCustomType>) => {
 const deleteAddress = async (c: Context<HonoCustomType>) => {
     const msgs = i18n.getMessagesbyContext(c);
     const { id } = c.req.param();
-    const { success } = await c.env.DB.prepare(
-        `DELETE FROM address WHERE id = ? `
-    ).bind(id).run();
+    const address = await c.env.DB.prepare(
+        `SELECT name FROM address WHERE id = ?`
+    ).bind(id).first<string>('name');
+    if (address) await unbindTelegramByAddress(c, address);
+    // single batch runs as one transaction: rows keyed by address name are
+    // deleted first and the address row last, so the name subqueries still
+    // resolve and a failed statement rolls back the whole deletion
+    const results = await c.env.DB.batch([
+        c.env.DB.prepare(
+            `DELETE FROM raw_mails WHERE address IN`
+            + ` (select name from address where id = ?) `
+        ).bind(id),
+        c.env.DB.prepare(
+            `DELETE FROM address_sender WHERE address IN`
+            + ` (select name from address where id = ?) `
+        ).bind(id),
+        c.env.DB.prepare(
+            `DELETE FROM sendbox WHERE address IN`
+            + ` (select name from address where id = ?) `
+        ).bind(id),
+        c.env.DB.prepare(
+            `DELETE FROM auto_reply_mails WHERE address IN`
+            + ` (select name from address where id = ?) `
+        ).bind(id),
+        c.env.DB.prepare(
+            `DELETE FROM users_address WHERE address_id = ?`
+        ).bind(id),
+        c.env.DB.prepare(
+            `DELETE FROM address WHERE id = ? `
+        ).bind(id),
+    ]);
+    const success = results.every((result) => result.success);
     if (!success) {
         return c.text(msgs.OperationFailedMsg, 500)
     }
-    const { success: mailSuccess } = await c.env.DB.prepare(
-        `DELETE FROM raw_mails WHERE address IN`
-        + ` (select name from address where id = ?) `
-    ).bind(id).run();
-    if (!mailSuccess) {
-        return c.text(msgs.OperationFailedMsg, 500)
-    }
-    const { success: sendAccess } = await c.env.DB.prepare(
-        `DELETE FROM address_sender WHERE address IN`
-        + ` (select name from address where id = ?) `
-    ).bind(id).run();
-    const { success: usersAddressSuccess } = await c.env.DB.prepare(
-        `DELETE FROM users_address WHERE address_id = ?`
-    ).bind(id).run();
-    return c.json({
-        success: success && mailSuccess && sendAccess && usersAddressSuccess
-    })
+    return c.json({ success })
 };
 
 const clearInbox = async (c: Context<HonoCustomType>) => {

@@ -55,6 +55,33 @@ The optional `original_recipient` parameter filters on that field in the databas
 
 **Note**: Keyword filtering has been removed from the backend API. If you need to filter emails by content, please use the frontend filter input in the UI, which filters the currently displayed page.
 
+## Mail Read Status API
+
+Enable `ENABLE_MAIL_READ_STATUS` and upgrade the database first. Historical mail has `is_unread = NULL` and is treated as read; new mail has `is_unread = 1`. Opening unread mail from the web mail list marks it as read, and its detail view can switch the state manually. Refreshing the page does not mark it as read:
+
+- `PATCH /api/mails/:id/read`: set one mail belonging to the current address; use `{ "isUnread": true }` for unread or `{ "isUnread": false }` for read
+
+## Admin Get Mail API
+
+Fetch a single mail by mail ID without a mailbox JWT. Authenticate with `x-admin-auth`.
+The response matches one entry returned by `/admin/mails`: gzip-compressed raw content is decompressed into `raw`, and `raw_blob` is excluded.
+
+```python
+import requests
+
+mail_id = 1
+url = f"https://<your-worker-address>/admin/mails/{mail_id}"
+
+headers = {
+        "x-admin-auth": "<your-Admin-password>",
+        # "x-custom-auth": "<your-website-password>", # If private site password is enabled
+    }
+
+response = requests.get(url, headers=headers)
+
+print(response.json())
+```
+
 ## Admin Delete Mail API
 
 Delete a single mail by mail ID.
@@ -160,12 +187,108 @@ print(response.json())
 ## User Mail API
 
 ::: warning Note: User JWT vs Address JWT
-This endpoint uses **User JWT** (obtained via `/user_api/login` or `/user_api/register`), with `x-user-token` header.
+These endpoints use a **User JWT** (obtained via `/user_api/login` after registration), with the `x-user-token` header. Binding an address also requires an Address JWT in the same request.
 
 **Do not confuse with Address JWT**:
 - Address JWT uses `Authorization: Bearer <jwt>` to access `/api/*` endpoints
 - User JWT uses `x-user-token: <jwt>` to access `/user_api/*` endpoints
 :::
+
+### Bind an Email Address to a User Account
+
+Binding associates an existing mailbox with the currently logged-in user account so it can be managed in the user center. For Telegram bindings, see [Telegram Bot](./telegram.md#per-user-mail-push).
+
+`POST /user_api/bind_address` requires both credentials:
+
+| Header | Value |
+| --- | --- |
+| `x-user-token` | The current account's User JWT, from the `jwt` field returned by `POST /user_api/login` |
+| `Authorization` | `Bearer <Address-JWT>`, using the `jwt` returned when [creating a mailbox](./new-address-api.md) or the Address JWT obtained after mailbox login |
+
+No request body is required. User and mailbox identities come from these two JWTs; `user_id`, `address_id`, and email addresses cannot be supplied through the request body. Include `x-custom-auth` if the site requires an access password.
+
+```python
+import requests
+
+response = requests.post(
+    "https://<your-worker-address>/user_api/bind_address",
+    headers={
+        "x-user-token": "<your-user-JWT-token>",
+        "Authorization": "Bearer <your-address-JWT>",
+        # "x-custom-auth": "<your-site-password>",
+    },
+)
+print(response.json())  # {"success": True}
+```
+
+Success returns `{"success": true}`; binding the same address to the same user again also succeeds. An address already bound to another user or a user who has reached their address limit results in 400.
+
+### Bound Address List
+
+`GET /user_api/bind_address` uses server-side pagination and accepts these query parameters:
+
+Requests without pagination parameters return the default first page. Fetching all bound addresses in one request is not supported.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `limit` | `20` | Page size, from 1 to 100 |
+| `offset` | `0` | Pagination offset |
+| `query` | Empty | Optional email address keyword filter for the current user's bound addresses; at most 100 characters, without `%` or `_` (invalid queries return 400) |
+
+The `results` array contains only the current page. The filtered total is queried only when `offset=0`; later pages return `count: 0`, so clients should retain the total from the first page.
+
+```python
+import requests
+
+url = "https://<your-worker-address>/user_api/bind_address"
+headers = {
+    "x-user-token": "<your-user-JWT-token>",
+}
+querystring = {
+    "limit": "20",
+    "offset": "0",
+}
+response = requests.get(url, headers=headers, params=querystring)
+print(response.json())
+```
+
+### Get an Address JWT for a Bound Mailbox
+
+`GET /user_api/bind_address_jwt/:address_id` uses the User JWT and only returns credentials for mailboxes bound to the current user. Obtain `address_id` from `results[].id` in the bound address list above. Use the returned `jwt` as `Authorization: Bearer <jwt>` for `/api/*` mailbox endpoints.
+
+```python
+import requests
+
+address_id = 1
+response = requests.get(
+    f"https://<your-worker-address>/user_api/bind_address_jwt/{address_id}",
+    headers={
+        "x-user-token": "<your-user-JWT-token>",
+        # "x-custom-auth": "<your-site-password>",
+    },
+)
+print(response.json())  # {"jwt": "..."}
+```
+
+### Unbind an Email Address
+
+`POST /user_api/unbind_address` uses the User JWT with a body of `{"address_id": 1}` and returns `{"success": true}` on success. It removes only the current user's association with the mailbox, without deleting the mailbox or its messages or revoking issued Address JWTs. Save the mailbox credential before unbinding to retain access or bind it again later.
+
+```python
+import requests
+
+response = requests.post(
+    "https://<your-worker-address>/user_api/unbind_address",
+    headers={
+        "x-user-token": "<your-user-JWT-token>",
+        # "x-custom-auth": "<your-site-password>",
+    },
+    json={"address_id": 1},
+)
+print(response.json())  # {"success": True}
+```
+
+### User Mail List
 
 Supports `address` filter
 

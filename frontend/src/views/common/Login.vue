@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useScopedI18n } from '@/i18n/app'
 import { useRouter } from 'vue-router'
-import { NewLabelOutlined, EmailOutlined } from '@vicons/material'
+import { NewLabelOutlined, EmailOutlined, RedeemOutlined } from '@vicons/material'
 
 import AdminContact from '../common/AdminContact.vue'
 import Turnstile from '../../components/Turnstile.vue'
@@ -48,7 +48,8 @@ const credential = ref('')
 const emailName = ref("")
 const emailDomain = ref("")
 const cfToken = ref("")
-const enableRandomSubdomain = ref(false)
+const subdomainMode = ref("normal")
+const customSubdomain = ref("")
 const loginCfToken = ref("")
 const loginTurnstileRef = ref(null)
 const loginMethod = ref('credential') // 'credential' or 'password'
@@ -167,11 +168,14 @@ const newEmail = async () => {
     try {
         // If custom names are disabled, send empty name to trigger backend auto-generation
         const nameToSend = openSettings.value.disableCustomAddressName ? "" : emailName.value;
+        const domainToSend = subdomainMode.value === "custom"
+            ? `${customSubdomain.value.trim()}.${emailDomain.value}`
+            : emailDomain.value;
         const res = await props.newAddressPath(
             nameToSend,
-            emailDomain.value,
+            domainToSend,
             cfToken.value,
-            enableRandomSubdomain.value
+            subdomainMode.value === "random"
         );
         jwt.value = res["jwt"];
         addressPassword.value = res["password"] || '';
@@ -186,6 +190,10 @@ const newEmail = async () => {
     } catch (error) {
         message.error(error.message || "error");
     }
+};
+
+const openRedeemPage = async () => {
+    await router.push(getRouterPathWithLang('/redeem', locale.value));
 };
 
 const addressPrefix = computed(() => {
@@ -206,7 +214,7 @@ const canUseRandomSubdomain = computed(() => {
 
 watch(canUseRandomSubdomain, (enabled) => {
     if (!enabled) {
-        enableRandomSubdomain.value = false;
+        subdomainMode.value = "normal";
     }
 });
 
@@ -275,7 +283,7 @@ onMounted(async () => {
                         v-model:value="loginCfToken" />
 
                     <div class="switch-login-button">
-                        <n-button v-if="openSettings?.enableAddressPassword"
+                        <n-button v-if="openSettings?.enableAddressPassword && !openSettings.addressPasswordLoginOnly"
                             @click="loginMethod === 'password' ? loginMethod = 'credential' : loginMethod = 'password'"
                             type="info" quaternary size="tiny">
                             {{ loginMethod === 'password' ? t('credentialLogin') : t('passwordLogin') }}
@@ -294,6 +302,16 @@ onMounted(async () => {
                         </template>
                         {{ t('getNewEmail') }}
                     </n-button>
+                    <div v-if="openSettings.enableRedeemCode" class="redeem-entry-section">
+                        <n-divider />
+                        <n-text type="info" class="redeem-entry-tip">{{ t('redeemEntryTip') }}</n-text>
+                        <n-button data-testid="redeem-entry" block secondary strong @click="openRedeemPage">
+                            <template #icon>
+                                <n-icon :component="RedeemOutlined" />
+                            </template>
+                            {{ t('useRedeemCode') }}
+                        </n-button>
+                    </div>
                 </n-form>
             </n-tab-pane>
             <n-tab-pane v-if="showNewAddressTab" name="register" :tab="t('getNewEmail')">
@@ -321,20 +339,42 @@ onMounted(async () => {
                                 :options="domainsOptions" />
                         </n-input-group>
                         <n-form-item-row v-if="canUseRandomSubdomain">
-                            <n-checkbox v-model:checked="enableRandomSubdomain">
-                                {{ t('enableRandomSubdomain') }}
-                            </n-checkbox>
-                            <p style="margin: 8px 0 0; opacity: 0.75;">
-                                {{ t('randomSubdomainTip') }}
-                            </p>
+                            <div style="width: 100%;">
+                                <n-radio-group v-model:value="subdomainMode">
+                                    <n-space vertical>
+                                        <n-radio value="normal">{{ t('normalSubdomain') }}</n-radio>
+                                        <n-radio value="random">{{ t('enableRandomSubdomain') }}</n-radio>
+                                        <n-radio value="custom">{{ t('enableCustomSubdomain') }}</n-radio>
+                                    </n-space>
+                                </n-radio-group>
+                                <p v-if="subdomainMode === 'random'" style="margin: 8px 0 0; opacity: 0.75;">
+                                    {{ t('randomSubdomainTip') }}
+                                </p>
+                                <n-input-group v-if="subdomainMode === 'custom'" style="margin-top: 8px;">
+                                    <n-input v-model:value="customSubdomain" />
+                                    <n-input-group-label>.{{ emailDomain }}</n-input-group-label>
+                                </n-input-group>
+                            </div>
                         </n-form-item-row>
                         <Turnstile v-model:value="cfToken" />
-                        <n-button type="primary" block secondary strong @click="newEmail" :loading="loading">
+                        <n-button type="primary" block secondary strong @click="newEmail" :loading="loading"
+                            :disabled="subdomainMode === 'custom' && !customSubdomain.trim()">
                             <template #icon>
                                 <n-icon :component="NewLabelOutlined" />
                             </template>
                             {{ t('getNewEmail') }}
                         </n-button>
+                        <div v-if="openSettings.enableRedeemCode" class="redeem-entry-section">
+                            <n-divider />
+                            <n-text type="info" class="redeem-entry-tip">{{ t('redeemEntryTip') }}</n-text>
+                            <n-button data-testid="redeem-entry-register" block secondary strong
+                                @click="openRedeemPage">
+                                <template #icon>
+                                    <n-icon :component="RedeemOutlined" />
+                                </template>
+                                {{ t('useRedeemCode') }}
+                            </n-button>
+                        </div>
                     </n-form>
                 </n-spin>
             </n-tab-pane>
@@ -358,6 +398,21 @@ onMounted(async () => {
 
 .n-form .n-button {
     margin-top: 10px;
+}
+
+.redeem-entry-section {
+    margin-top: 18px;
+}
+
+.redeem-entry-section :deep(.n-divider) {
+    margin: 0 0 14px;
+}
+
+.redeem-entry-tip {
+    display: block;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
 }
 
 .switch-login-button {

@@ -10,8 +10,12 @@
 | `DOMAINS`                  | JSON        | 用于临时邮箱的所有域名, 支持多个域名       | `["awsl.uk", "dreamhunter2333.xyz"]` |
 | `JWT_SECRET`               | 文本/Secret | 用于签名 JWT 的密钥，JWT 用于登录鉴权。请使用随机字符串，例如通过 `openssl rand -hex 32` 生成  | `a1b2c3d4...`                        |
 | `ADMIN_PASSWORDS`          | JSON        | admin 控制台密码, 不配置则不允许访问控制台 | `["123", "456"]`                     |
+| `DISABLE_USER_SYSTEM` | 文本/JSON | 拦截用户系统接口，隐藏前端用户界面；默认关闭 | `true` |
 | `ENABLE_USER_CREATE_EMAIL` | 文本/JSON   | 是否允许用户创建邮箱, 不配置则不允许       | `true`                               |
 | `ENABLE_USER_DELETE_EMAIL` | 文本/JSON   | 是否允许用户删除邮件, 不配置则不允许       | `true`                               |
+| `ENABLE_MAIL_READ_STATUS` | 文本/JSON | 启用邮件已读/未读状态。启用前需要升级数据库 Schema | `true` |
+| `ENABLE_REDEEM_CODE` | 文本/JSON | 启用兑换码页面、用户兑换 API 和管理端兑换码功能；默认关闭 | `true` |
+| `REDEEM_CODE_URL` | 文本 | 获取兑换码的外部平台链接；不配置则不展示入口 | `https://example.com/redeem-codes` |
 
 > [!IMPORTANT] DOMAINS 与 DEFAULT_DOMAINS 必须先在 Cloudflare 配置好
 > 这里填写的所有域名（包括下文「邮箱相关变量」里的 `DEFAULT_DOMAINS`、`USER_ROLES.domains`、`RANDOM_SUBDOMAIN_DOMAINS` 等）必须是你**已经在 Cloudflare Email Routing 中启用并完成邮件 DNS 记录下发**的域名。Worker 部署完成后，还需要把该域名的 Catch-all 规则绑定到这个 Worker，否则邮件无法投递到 Worker。
@@ -22,7 +26,10 @@
 | 变量名                         | 类型      | 说明                                 | 示例             |
 | ------------------------------ | --------- | ------------------------------------ | ---------------- |
 | `PASSWORDS`                    | JSON      | 网站私有密码, 配置后需要密码才能访问 | `["123", "456"]` |
+| `ADMIN_API_IP_WHITELIST`       | JSON      | Admin API IP 白名单，配置后所有 `/admin/*` 请求仅允许列表中的 IP | `["203.0.113.10"]` |
 | `DISABLE_ADMIN_PASSWORD_CHECK` | 文本/JSON | 警告: 管理员控制台没有密码或用户检查 | `false`          |
+
+`ADMIN_API_IP_WHITELIST` 未配置或为空数组时不限制来源 IP。配置后，它会同时限制管理员密码和 Admin 用户令牌访问，只信任 Cloudflare 提供的 `CF-Connecting-IP`，缺少该请求头也会拒绝访问。
 
 ## 邮箱相关变量
 
@@ -32,24 +39,28 @@
 | `MIN_ADDRESS_LEN`                     | 数字      | `邮箱名称` 的最小长度                                                                                                             | `1`                                       |
 | `MAX_ADDRESS_LEN`                     | 数字      | `邮箱名称` 的最大长度                                                                                                             | `30`                                      |
 | `DISABLE_CUSTOM_ADDRESS_NAME`         | 文本/JSON | 禁用自定义邮箱地址名称，如果设置为 true，则用户无法输入自定义邮箱名称，将由后台自动生成                                           | `true`                                    |
+| `DISABLE_ADDRESS_UPDATED_AT` | 文本/JSON | 默认 `false`。设为 `true` 时停止单地址及用户批量的主动保活刷新，并禁用内置手动和定时不活跃地址清理。地址初始时间、密码操作及其他清理规则不变 | `true` |
 | `ADDRESS_CHECK_REGEX`                 | 文本      | `邮箱名称` 的正则表达式, 只用于检查                                                                                               | `^(?!.*admin).*`                          |
 | `ADDRESS_REGEX`                       | 文本      | `邮箱名称` 替换非法符号的正则表达式, 不在其中的符号将被替换，如果不设置，默认为 `[^a-z0-9]`, 需谨慎使用, 有些符号可能导致无法收件 | `[^a-z0-9]`                               |
 | `DEFAULT_DOMAINS`                     | JSON      | 默认用户可用的域名(未登录或未分配角色的用户)                                                                                      | `["awsl.uk", "dreamhunter2333.xyz"]`      |
 | `CREATE_ADDRESS_DEFAULT_DOMAIN_FIRST` | 文本/JSON | 创建新地址时是否优先使用默认域名，如果设置为 true，当未指定域名时将使用第一个域名, 主要用于 telegram bot 场景                     | `false`                                   |
 | `ENABLE_CREATE_ADDRESS_SUBDOMAIN_MATCH` | 文本/JSON | 是否允许创建邮箱 API 使用“基础域名后缀匹配”。开启后，如果允许域名里有 `example.com`，则 `/api/new_address` 与 `/admin/new_address` 可以接受 `foo.example.com`、`a.b.example.com` 这类子域名 | `true` |
-| `RANDOM_SUBDOMAIN_DOMAINS`            | JSON      | 允许启用随机子域名的基础域名列表，启用后可把 `name@abc.com` 创建成 `name@随机串.abc.com`                                         | `["abc.com"]`                             |
+| `RANDOM_SUBDOMAIN_DOMAINS`            | JSON      | 允许使用随机或手动子域名的基础域名列表，随机模式可把 `name@abc.com` 创建成 `name@随机串.abc.com`                              | `["abc.com"]`                             |
 | `RANDOM_SUBDOMAIN_LENGTH`             | 数字      | 随机子域名长度，默认 `8`，范围 `1-63`                                                                                            | `8`                                       |
 | `DOMAIN_LABELS`                       | JSON      | 对于中文域名，可以使用 DOMAIN_LABELS 显示域名的中文展示名称                                                                       | `["中文.awsl.uk", "dreamhunter2333.xyz"]` |
 | `ENABLE_AUTO_REPLY`                   | 文本/JSON | 允许自动回复邮件。发件人过滤（`source_prefix`）支持三种模式：留空匹配所有发件人、填写前缀进行 `startsWith` 匹配、使用 `/regex/` 语法进行正则匹配（如 `/@example\.com$/`） | `true`                                    |
 | `DEFAULT_SEND_BALANCE`                | 文本/JSON | 默认发送邮件余额；当值大于 `0` 时，用户打开前端设置页或首次发送邮件时会自动初始化该额度。如果不设置，将为 `0`                                                                                              | `1`                                       |
 | `ENABLE_ADDRESS_PASSWORD`             | 文本/JSON | 启用邮箱地址密码功能，启用后创建新地址时会自动生成密码，并支持密码登录和修改                                                      | `true`                                    |
+| `ADDRESS_PASSWORD_LOGIN_ONLY` | 文本/JSON | 默认 `false`，仅在 `ENABLE_ADDRESS_PASSWORD=true` 时生效；登录页只显示密码登录并隐藏凭据登录切换按钮。当前仅控制登录页，旧凭据、登录链接和 API 访问仍可使用，不改变 JWT 时效 | `true` |
 | `ENABLE_AGENT_EMAIL_INFO`             | 文本/JSON | 是否在前端“地址凭证与连接方式”弹窗中展示 AI Agent 接入信息（Address JWT、parsed-mail API、skill 链接）                         | `true`                                    |
 | `SMTP_IMAP_PROXY_CONFIG`              | JSON      | 在前端“地址凭证与连接方式”弹窗中展示 SMTP/IMAP 代理连接信息；仅用于展示给用户，不会启动代理服务，代理服务仍需单独部署           | 见下方示例                                |
 | `SEND_MAIL_DOMAINS`                   | JSON      | 限制 `SEND_MAIL` binding 可用于哪些发件域名；留空或不配置时允许所有域名                                                            | `["example.com", "mail.example.com"]`     |
 
 > [!NOTE]
-> `RANDOM_SUBDOMAIN_DOMAINS` 只负责“创建地址时自动补随机子域名”，不会自动帮你创建 Cloudflare
-> 侧的子域名路由。
+> `DEFAULT_DOMAINS` 未配置或配置为空数组时，会回退使用 `DOMAINS`。
+>
+> `RANDOM_SUBDOMAIN_DOMAINS` 定义前端随机及手动子域名模式共同使用的基础域名范围，不会自动帮你
+> 创建 Cloudflare 侧的子域名路由。
 >
 > 要让 `name@<随机>.abc.com` 这种随机子域名地址真的能收到邮件，**必须在基础域名的 DNS 中为
 > `*` 子域添加通配 MX 记录**：把基础域名上现有的每一条 MX 记录都复制到 `*` 主机名上，
@@ -60,8 +71,8 @@
 >
 > 子域名地址通常更适合收件；如果要发件，仍建议优先使用主域名。
 >
-> `ENABLE_CREATE_ADDRESS_SUBDOMAIN_MATCH` 与随机子域名功能不同：它允许 API 调用方**直接指定**
-> `foo.example.com` 这类子域名；而随机子域名功能是系统在创建时自动补一个随机前缀。
+> `ENABLE_CREATE_ADDRESS_SUBDOMAIN_MATCH` 与上述前端模式独立：它允许 API 调用方在其他允许的
+> 基础域名下**直接指定** `foo.example.com` 这类子域名。
 >
 > `ENABLE_CREATE_ADDRESS_SUBDOMAIN_MATCH` 的优先级为：当 env 明确设置为 `false` 时，全局硬禁用；
 > 其他情况下优先使用后台持久化设置，后台未设置时再回退到 env 值。
@@ -87,16 +98,19 @@
 
 | 变量名                          | 类型      | 说明                                                                       | 示例                       |
 | ------------------------------- | --------- | -------------------------------------------------------------------------- | -------------------------- |
-| `BLACK_LIST`                    | 文本      | 黑名单，用于过滤发件人，逗号分隔                                           | `gov.cn,edu.cn`            |
+| `BLACK_LIST`                    | 文本      | 发件人黑名单，逗号分隔；对 SMTP 信封发件人与邮件头 From 中解析出的全部邮箱地址进行区分大小写的子串匹配，任意一个命中即拒收。地址解析独立于正文解析；后台发件人黑名单规则相同，不匹配显示名称 | `gov.cn,edu.cn`            |
 | `ENABLE_CHECK_JUNK_MAIL`        | 文本/JSON | 是否启用垃圾邮件检查，配合下列两个列表使用                                 | `false`                    |
-| `JUNK_MAIL_CHECK_LIST`          | JSON      | 垃圾邮件检查配置, 任何一项 `存在` 且 `不通过` 则被判定为垃圾邮件           | `["spf", "dkim", "dmarc"]` |
-| `JUNK_MAIL_FORCE_PASS_LIST`     | JSON      | 垃圾邮件检查配置, 任何一项 `不存在` 或者 `不通过` 则被判定为垃圾邮件       | `["spf", "dkim", "dmarc"]` |
+| `JUNK_MAIL_CHECK_LIST`          | JSON      | 存在性检查；已注册的失败/错误结果判定为垃圾邮件，`none` 和 SPF/DKIM `neutral` 按不存在处理 | `["spf", "dkim", "dmarc"]` |
+| `JUNK_MAIL_FORCE_PASS_LIST`     | JSON      | 强制通过检查；每一项都必须明确返回 `pass`，否则判定为垃圾邮件              | `["spf", "dkim", "dmarc"]` |
 | `FORWARD_ADDRESS_LIST`          | JSON      | 全局转发地址列表，如果不配置则不启用，启用后所有邮件都会转发到列表中的地址 | `["xxx@xxx.com"]`          |
 | `REMOVE_EXCEED_SIZE_ATTACHMENT` | 文本/JSON | 如果附件大小超过 2MB，则删除附件，邮件可能由于解析而丢失一些信息           | `true`                     |
 | `REMOVE_ALL_ATTACHMENT`         | 文本/JSON | 移除所有附件，邮件可能由于解析而丢失一些信息                               | `true`                     |
 | `ENABLE_MAIL_GZIP`             | 文本/JSON | 启用后新邮件将 Gzip 压缩存储到 `raw_blob` 字段，可节省 D1 数据库空间。已有明文 `raw` 数据自动兼容读取。**启用前请先执行数据库迁移（`Admin -> 快速设置 -> 数据库 -> 升级数据库 Schema` 或 `POST /admin/db_migration`），确保 `raw_blob` 列已创建。该功能会增加压缩/解压 CPU 开销，建议使用 Cloudflare Worker 付费 Plan 再开启。** | `true`                     |
+| `CLEANUP_BATCH_SIZE`           | 数字      | 内置邮件、发件箱及地址清理任务的单次处理上限，默认 `3000`，有效范围 `1-5000`。较小值可降低单次 D1 压力，较大值可加快积压数据清理 | `3000` |
 
 > [!NOTE]
+> 认证结果遵循各自规范：SPF `none` 表示没有可检查的域名或 SPF 记录，SPF `neutral` 必须与 `none` 相同处理；DKIM `none` 表示邮件未签名，DKIM `neutral` 同样按未签名处理；DMARC `none` 表示没有适用的 DMARC 策略。未注册结果和不支持的方法版本也会被忽略。`JUNK_MAIL_CHECK_LIST` 将这些结果视为认证方法不存在，`JUNK_MAIL_FORCE_PASS_LIST` 仍只接受明确且受支持的 `pass`
+>
 > `ENABLE_MAIL_GZIP` 会增加邮件写入压缩与读取解压的 CPU 消耗，免费版 Worker 更容易触发 CPU 限制，建议付费 Plan 再开启
 >
 > `垃圾邮件检查` 和 `移除附件功能` 需要解析邮件，免费版 CPU 有限，可能会导致大邮件解析超时
@@ -111,6 +125,7 @@
 | ---------------- | --------- | ------------------------------------- | ------------------ |
 | `ENABLE_WEBHOOK` | 文本/JSON | 是否启用 webhook                      | `true`             |
 | `FRONTEND_URL`   | 文本      | 前端地址，用于发送 webhook 的邮件 url | `https://xxxx.xxx` |
+| `BACKEND_URL` | 文本 | 后端公网根地址，用于附件签名链接；未配置时附件 URL 为空 | `https://temp-email-api.example.com` |
 
 > [!NOTE]
 > webhook 功能需要解析邮件，免费版 CPU 有限，可能会导致大邮件解析超时
@@ -131,7 +146,7 @@
 
 > [!NOTE] USER_ROLES 用户角色配置说明
 >
-> - 如果 `domains` 为空将使用 `DEFAULT_DOMAINS`
+> - 如果 `domains` 为空将使用 `DEFAULT_DOMAINS`；如果 `DEFAULT_DOMAINS` 也为空，则继续回退到 `DOMAINS`
 > - 如果 prefix 为 null 将使用默认前缀, 如果 prefix 为空字符串将不使用前缀
 >
 > 通过用户界面部署时 `USER_ROLES` 请配置为此格式 `[{"domains":["awsl.uk","dreamhunter2333.xyz"],"role":"vip","prefix":"vip"},{"domains":["awsl.uk","dreamhunter2333.xyz"],"role":"admin","prefix":""}]`
@@ -148,7 +163,8 @@
 | `ALWAYS_SHOW_ANNOUNCEMENT` | 文本/JSON   | 是否总是显示公告(即使无更改), 默认 `false`       | `true`                |
 | `COPYRIGHT`                | 文本        | 自定义前端界面页脚文本，支持 html                | `Dream Hunter`        |
 | `ADMIN_CONTACT`            | 文本        | admin 联系方式，可配置任意字符串, 不配置则不显示 | `xxx@gmail.com`       |
-| `DISABLE_SHOW_GITHUB`      | 文本/JSON   | 是否显示 GitHub 链接                             | `true`                |
+| `DISABLE_SHOW_GITHUB`      | 文本/JSON   | 是否全局隐藏 GitHub 链接                         | `true`                |
+| `DISABLE_SHOW_GITHUB_FOR_USER` | 文本/JSON | 是否仅对普通用户隐藏 GitHub 链接，admin 仍显示   | `true`                |
 | `STATUS_URL`               | 文本        | 状态监控页面 URL，配置后显示 Status 菜单按钮     | `https://status.example.com` |
 | `CF_TURNSTILE_SITE_KEY`    | 文本/Secret | Turnstile 人机验证配置（用于新建邮箱、注册验证码等） | `xxx`                 |
 | `CF_TURNSTILE_SECRET_KEY`  | 文本/Secret | Turnstile 人机验证配置（用于新建邮箱、注册验证码等） | `xxx`                 |

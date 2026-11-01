@@ -24,7 +24,7 @@ const message = useMessage()
 const { toClipboard } = useClipboard()
 
 const {
-    jwt, settings, userJwt, isTelegram, openSettings, telegramApp
+    jwt, settings, userJwt, isTelegram, openSettings, telegramApp, showUserMailboxes
 } = useGlobalState()
 
 const { t } = useScopedI18n('components.AddressSelect')
@@ -97,7 +97,7 @@ const buildLocalOptions = (excludeAddresses = new Set()) => {
 const buildUserOptions = async () => {
     const children = [];
     try {
-        const { results } = await api.fetch(`/user_api/bind_address`);
+        const { results } = await api.fetch(`/user_api/bind_address?limit=100&offset=0`);
         for (const row of results || []) {
             const address = row.address || row.name;
             if (!address) continue;
@@ -150,10 +150,10 @@ const refreshAddressOptions = async () => {
             return;
         }
         const groups = [];
-        if (userJwt.value) {
+        if (showUserMailboxes.value) {
             const userChildren = await buildUserOptions();
             if (userChildren.length > 0) {
-                groups.push({ type: 'group', label: t('userAddresses'), children: userChildren });
+                groups.push({ type: 'group', label: t('linkedMailboxes'), children: userChildren });
             }
             const userAddressSet = new Set(userChildren.map((item) => item.address));
             const localChildren = buildLocalOptions(userAddressSet);
@@ -207,7 +207,7 @@ onMounted(async () => {
     await refreshAddressOptions();
 });
 
-watch([userJwt, isTelegram, () => settings.value.address], async () => {
+watch([userJwt, isTelegram, showUserMailboxes, () => settings.value.address], async () => {
     await refreshAddressOptions();
 });
 </script>
@@ -215,7 +215,7 @@ watch([userJwt, isTelegram, () => settings.value.address], async () => {
 <template>
     <n-flex class="address-row" align="center" justify="center" :wrap="true">
         <n-select v-model:value="addressValue" :options="addressOptions" :size="size" filterable
-            :loading="addressLoading" :placeholder="t('address')" @update:value="onAddressChange"
+            :loading="addressLoading" :placeholder="t('selectMailbox')" @update:value="onAddressChange"
             class="address-select" />
         <slot name="actions" />
         <n-button v-if="showCopy" class="address-copy" @click="copy" :size="size" tertiary type="primary">

@@ -56,6 +56,24 @@ const fetchMails = async () => {
     }
 }
 
+const toggleCurrentMailUnread = async () => {
+    if (!currentMail.value || !openSettings.value.enableMailReadStatus) return
+    const mail = currentMail.value
+    const previousValue = mail.is_unread
+    const isUnread = previousValue !== 1
+    mail.is_unread = isUnread ? 1 : 0
+    try {
+        await api.fetch(`/api/mails/${mail.id}/read`, {
+            method: 'PATCH',
+            body: JSON.stringify({ isUnread }),
+            showLoading: false
+        })
+        message.success(t('readStatusUpdated'))
+    } catch {
+        mail.is_unread = previousValue
+    }
+}
+
 // 删除邮件
 const deleteMail = async () => {
     if (!currentMail.value) return;
@@ -170,7 +188,7 @@ onBeforeUnmount(() => {
                                 <SettingsFilled />
                             </n-icon>
                         </template>
-                        {{ t('accountSettings') }}
+                        {{ t('mailboxSettings') }}
                     </n-button>
                 </n-flex>
                 <div v-if="isFirstPage" style="text-align: center; margin-top: 12px;">
@@ -182,7 +200,7 @@ onBeforeUnmount(() => {
 
             <!-- 账户设置卡片 -->
             <n-card v-if="showAccountSettingsCard" :bordered="false" embedded closable
-                @close="showAccountSettingsCard = false" :title="t('accountSettings')">
+                @close="showAccountSettingsCard = false" :title="t('mailboxSettings')">
                 <AccountSettings />
             </n-card>
 
@@ -216,10 +234,15 @@ onBeforeUnmount(() => {
                     <n-empty :description="t('noMails')" />
                 </div>
                 <div v-else>
-                    <h3 v-if="currentMail.subject">{{ currentMail.subject }}</h3>
+                    <h3 v-if="currentMail.subject"
+                        :class="{ 'mail-title-unread': openSettings.enableMailReadStatus && currentMail.is_unread === 1 }">
+                        {{ currentMail.subject }}
+                    </h3>
                     <div style="margin-top: 16px;">
                         <MailContentRenderer :mail="currentMail" :showEMailTo="false" :showReply="false"
                             :enableUserDeleteEmail="openSettings.enableUserDeleteEmail" :showSaveS3="false"
+                            :enableMailReadStatus="openSettings.enableMailReadStatus"
+                            :onUpdateMailReadStatus="toggleCurrentMailUnread"
                             :onDelete="deleteMail" />
                     </div>
                 </div>
@@ -245,5 +268,20 @@ onBeforeUnmount(() => {
 .n-card {
     margin-top: 20px;
     width: 100%;
+}
+
+.mail-title-unread {
+    font-weight: 700;
+}
+
+.mail-title-unread::before {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: #2080f0;
+    content: '';
+    vertical-align: middle;
 }
 </style>

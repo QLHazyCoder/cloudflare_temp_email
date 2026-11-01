@@ -48,6 +48,12 @@ No additional env var is required.
 
 Register at `https://resend.com/domains` and add DNS records according to the instructions.
 
+> [!WARNING] DNS record proxy status on Cloudflare
+> Resend domain verification CNAME records **must be set to DNS-only** (gray cloud) in
+> the Cloudflare DNS dashboard. Proxied (orange cloud) records will prevent Resend from
+> completing verification, and a single failed attempt can take several hours before
+> Retry becomes available. See [#515](https://github.com/dreamhunter2333/cloudflare_temp_email/issues/515).
+
 Create an `api key` on the `API KEYS` page.
 
 Then execute the following command to add `RESEND_TOKEN` to secrets:
@@ -144,12 +150,31 @@ cd worker
 wrangler secret put SMTP_CONFIG
 ```
 
+## User Accounts, Mailboxes, Email Addresses, and Send Permission
+
+These concepts are related, but they identify different objects:
+
+| Concept | Description |
+|---------|-------------|
+| User account | Signs in to the user center and can link and manage multiple mailboxes. The account email is not automatically a sending or receiving address |
+| Mailbox | The user-facing object that contains an inbox, sent mail, sending capability, and mailbox settings |
+| Email address | The concrete value that identifies a mailbox, such as `name@example.com`. The current mailbox is authenticated by its Address JWT |
+| Send permission and balance | Permission and balance records in `address_sender` are managed independently **per email address**; user roles configured by `NO_LIMIT_SEND_ROLE` can bypass address balance checks |
+
+Multiple email addresses bound to the same user account therefore do not share send permission or balance. To request permission for an address:
+
+1. Switch to the mailbox that needs to send mail
+2. Open the **Send Mail** page
+3. Click **Request Access**
+
+The request affects only the address selected at that time. After switching to another address, check that address's own balance and request permission separately if needed. An email address can also hold send permission without being bound to a user account.
+
 ## Send Balance Mechanism
 
-Users need a send balance to send emails. The balance mechanism works as follows:
+An email address needs its own send balance to send emails. The balance mechanism works as follows:
 
 1. **Auto-initialize Default Quota**: When `DEFAULT_SEND_BALANCE > 0`, the system automatically initializes the default quota when the user opens the send page or calls the send-mail API for the first time
-2. **Manual Request**: If `DEFAULT_SEND_BALANCE = 0`, users can still click "Request Send Permission" in the frontend to create a pending send-access record for admins to review
+2. **Manual Request**: If `DEFAULT_SEND_BALANCE = 0`, switch to the target email address in the frontend and click **Request Access** to create a pending send-access record for the current address
 3. **Unlimited Sending**: The following methods can bypass balance checks:
    - Add the address to the "No Limit Send Address List" in the admin console
    - Configure the `NO_LIMIT_SEND_ROLE` environment variable to specify roles that can send without limits

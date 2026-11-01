@@ -1,10 +1,6 @@
 import { Context } from "hono";
-import { createMimeMessage } from "mimetext";
 import { UserSettings, RoleAddressConfig } from "./models";
 import { CONSTANTS } from "./constants";
-import { compressText } from "./gzip";
-import { getStoredOriginalRecipient } from "./email/original_recipient";
-import { insertRawMail } from "./email/raw_mail_storage";
 
 export const getJsonObjectValue = <T = any>(
     value: string | any
@@ -139,12 +135,97 @@ export const getStringArray = (
     return value;
 }
 
+export const trimLower = (
+    value: string | undefined | null
+): string => {
+    return getStringValue(value).trim().toLowerCase();
+}
+
+export const normalizeDomain = (
+    value: string | undefined | null
+): string => {
+    return trimLower(value);
+}
+
+export const normalizeDomains = (domains: string[]): string[] => {
+    return domains
+        .map((domain) => normalizeDomain(domain))
+        .filter((domain) => domain.length > 0);
+}
+
+export const getMailDomain = (
+    value: string | undefined | null
+): string => {
+    const address = getStringValue(value).trim();
+    const atIndex = address.lastIndexOf("@");
+    if (atIndex < 0) {
+        return "";
+    }
+    return normalizeDomain(address.slice(atIndex + 1));
+}
+
+export const normalizeAddressDomain = (
+    value: string | undefined | null
+): string => {
+    const address = getStringValue(value).trim();
+    const atIndex = address.lastIndexOf("@");
+    if (atIndex < 0) {
+        return address;
+    }
+    const localPart = address.slice(0, atIndex).trim();
+    const domain = normalizeDomain(address.slice(atIndex + 1));
+    if (!localPart || !domain) {
+        return address;
+    }
+    return `${localPart}@${domain}`;
+}
+
+export const includesDomain = (
+    domains: string[] | undefined | null,
+    domain: string | undefined | null
+): boolean => {
+    const normalizedDomain = normalizeDomain(domain);
+    if (!normalizedDomain || !domains || domains.length === 0) {
+        return false;
+    }
+    return normalizeDomains(domains).includes(normalizedDomain);
+}
+
+export const isDomainOrSubdomain = (
+    domain: string | undefined | null,
+    allowDomain: string | undefined | null
+): boolean => {
+    const normalizedDomain = normalizeDomain(domain);
+    const normalizedAllowDomain = normalizeDomain(allowDomain);
+    if (!normalizedDomain || !normalizedAllowDomain) {
+        return false;
+    }
+    return normalizedDomain === normalizedAllowDomain
+        || normalizedDomain.endsWith(`.${normalizedAllowDomain}`);
+}
+
+export const getDomainMapValue = <T>(
+    valueMap: Record<string, T> | undefined | null,
+    domain: string | undefined | null
+): T | null => {
+    const normalizedDomain = normalizeDomain(domain);
+    if (!normalizedDomain || !valueMap) {
+        return null;
+    }
+    for (const [key, value] of Object.entries(valueMap)) {
+        if (normalizeDomain(key) === normalizedDomain) {
+            return value;
+        }
+    }
+    return null;
+}
+
 export const getDefaultDomains = (c: Context<HonoCustomType>): string[] => {
     if (c.env.DEFAULT_DOMAINS == undefined || c.env.DEFAULT_DOMAINS == null) {
         return getDomains(c);
     }
-    const domains = getStringArray(c.env.DEFAULT_DOMAINS);
-    return domains || getDomains(c);
+    const domains = normalizeDomains(getStringArray(c.env.DEFAULT_DOMAINS));
+    return domains.length > 0 ? domains : getDomains(c);
 }
 
 export const getDomains = (c: Context<HonoCustomType>): string[] => {
@@ -154,36 +235,46 @@ export const getDomains = (c: Context<HonoCustomType>): string[] => {
     // check if DOMAINS is an array, if not use json.parse
     if (!Array.isArray(c.env.DOMAINS)) {
         try {
-            return JSON.parse(c.env.DOMAINS);
+            return normalizeDomains(JSON.parse(c.env.DOMAINS));
         } catch (e) {
             console.error("Failed to parse DOMAINS", e);
             return [];
         }
     }
-    return c.env.DOMAINS;
+    return normalizeDomains(c.env.DOMAINS);
 }
 
 export const getRandomSubdomainDomains = (c: Context<HonoCustomType>): string[] => {
     if (!c.env.RANDOM_SUBDOMAIN_DOMAINS) {
         return [];
     }
-    return getStringArray(c.env.RANDOM_SUBDOMAIN_DOMAINS);
+    return normalizeDomains(getStringArray(c.env.RANDOM_SUBDOMAIN_DOMAINS));
 }
 
 export const getUserRoles = (c: Context<HonoCustomType>): UserRole[] => {
     if (!c.env.USER_ROLES) {
         return [];
     }
+    const normalizeRoles = (roles: UserRole[]): UserRole[] => {
+        return roles.map((role) => ({
+            ...role,
+            domains: Array.isArray(role.domains)
+                ? normalizeDomains(role.domains)
+                : typeof role.domains === "string"
+                    ? normalizeDomains([role.domains])
+                    : role.domains,
+        }));
+    };
     // check if USER_ROLES is an array, if not use json.parse
     if (!Array.isArray(c.env.USER_ROLES)) {
         try {
-            return JSON.parse(c.env.USER_ROLES);
+            return normalizeRoles(JSON.parse(c.env.USER_ROLES));
         } catch (e) {
             console.error("Failed to parse USER_ROLES", e);
             return [];
         }
     }
-    return c.env.USER_ROLES;
+    return normalizeRoles(c.env.USER_ROLES);
 }
 
 export const getAnotherWorkerList = (c: Context<HonoCustomType>): AnotherWorker[] => {
@@ -259,77 +350,6 @@ export const getEnvStringList = (value: string | string[] | undefined): string[]
     }
     return value.filter((item) => item.length > 0);
 }
-
-export const sendAdminInternalMail = async (
-    c: Context<HonoCustomType>, toMail: string, subject: string, text: string
-): Promise<boolean> => {
-    try {
-
-        const msg = createMimeMessage();
-        msg.setSender({
-            name: "Admin",
-            addr: "admin@internal"
-        });
-        msg.setRecipient(toMail);
-        msg.setSubject(subject);
-        msg.addMessage({
-            contentType: 'text/plain',
-            data: text
-        });
-        const message_id = Math.random().toString(36).substring(2, 15);
-        const rawText = msg.asRaw();
-        const originalRecipient = getStoredOriginalRecipient({
-            address: toMail,
-            source: "admin@internal",
-            rawEmail: rawText,
-        }) || null;
-        let success = false;
-        if (getBooleanValue(c.env.ENABLE_MAIL_GZIP)) {
-            let compressed: ArrayBuffer | null = null;
-            try {
-                compressed = await compressText(rawText);
-            } catch (gzipError) {
-                console.error("gzip compression failed, falling back to plaintext", gzipError);
-            }
-            if (compressed) {
-                success = await insertRawMail({
-                    db: c.env.DB,
-                    source: "admin@internal",
-                    address: toMail,
-                    raw: rawText,
-                    rawBlob: compressed,
-                    messageId: message_id,
-                    originalRecipient,
-                });
-            } else {
-                success = await insertRawMail({
-                    db: c.env.DB,
-                    source: "admin@internal",
-                    address: toMail,
-                    raw: rawText,
-                    messageId: message_id,
-                    originalRecipient,
-                });
-            }
-        } else {
-            success = await insertRawMail({
-                db: c.env.DB,
-                source: "admin@internal",
-                address: toMail,
-                raw: rawText,
-                messageId: message_id,
-                originalRecipient,
-            });
-        }
-        if (!success) {
-            console.log(`Failed save message from admin@internal to ${toMail}`);
-        }
-        return success;
-    } catch (error) {
-        console.log("sendAdminInternalMail error", error);
-        return false;
-    }
-};
 
 export const isGlobalTurnstileEnabled = (c: Context<HonoCustomType>): boolean => {
     return getBooleanValue(c.env.ENABLE_GLOBAL_TURNSTILE_CHECK)
@@ -416,6 +436,42 @@ export const isAddressCountLimitReached = async (
     return count >= maxAddressCount;
 };
 
+/**
+ * Convert HTML string to plain text for notification previews.
+ * Strips markup, converts linebreaks, decodes HTML entities and numeric character references.
+ *
+ * @param html - The HTML string to convert
+ * @returns Plain text representation of the HTML content
+ */
+export function htmlToText(html: string): string {
+    if (!html) return "";
+    return html
+        .replace(/<\s*(script|style|head|svg)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, ' ')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<a\b[^>]*\bhref=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi, ' $3 ')
+        .replace(/<\s*br\s*\/?>/gi, '\n')
+        .replace(/<\/\s*(p|div|tr|td|th|li|table|section|article|header|footer|h[1-6])\s*>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&#(\d+);/g, (_, code) => {
+            const num = parseInt(code, 10);
+            return num >= 0 && num <= 0x10ffff ? String.fromCodePoint(num) : '';
+        })
+        .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
+            const num = parseInt(code, 16);
+            return num >= 0 && num <= 0x10ffff ? String.fromCodePoint(num) : '';
+        })
+        .replace(/[ \t\r\f\v]+/g, ' ')
+        .replace(/\n\s+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 export default {
     getJsonObjectValue,
     getSetting,
@@ -425,6 +481,13 @@ export default {
     getBooleanValue,
     getIntValue,
     getStringArray,
+    trimLower,
+    normalizeDomain,
+    normalizeDomains,
+    getMailDomain,
+    normalizeAddressDomain,
+    includesDomain,
+    getDomainMapValue,
     getDefaultDomains,
     getDomains,
     getRandomSubdomainDomains,
@@ -434,11 +497,11 @@ export default {
     getAdminPasswords,
     checkIsAdmin,
     getEnvStringList,
-    sendAdminInternalMail,
     isGlobalTurnstileEnabled,
     checkCfTurnstile,
     checkUserPassword,
     getJsonSetting,
     getJsonValue: getJsonObjectValue,
-    getStringList: getStringArray
+    getStringList: getStringArray,
+    htmlToText
 }

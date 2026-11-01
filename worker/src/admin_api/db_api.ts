@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS raw_mails (
     raw TEXT,
     raw_blob BLOB,
     metadata TEXT,
+    is_unread INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -126,6 +127,22 @@ CREATE TABLE IF NOT EXISTS user_passkeys (
 CREATE INDEX IF NOT EXISTS idx_user_passkeys_user_id ON user_passkeys(user_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_passkeys_user_id_passkey_id ON user_passkeys(user_id, passkey_id);
+
+CREATE TABLE IF NOT EXISTS redeem_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    redeem_type TEXT NOT NULL,
+    value TEXT NOT NULL,
+    result TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    redeemed INTEGER NOT NULL DEFAULT 0 CHECK (redeemed IN (0, 1)),
+    expires_at DATETIME NOT NULL,
+    redeemed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_redeem_codes_type ON redeem_codes(redeem_type);
 `
 
 export default {
@@ -201,14 +218,15 @@ export default {
             }
         }
         if (version && version <= "v0.0.7") {
-            // migration to v0.0.8: add original_recipient inferred recipient field
-            const tableInfo = await c.env.DB.prepare(
-                `PRAGMA table_info(raw_mails)`
-            ).all();
-            const hasOriginalRecipient = tableInfo.results?.some(
-                (col: any) => col.name === 'original_recipient'
-            );
-            if (!hasOriginalRecipient) {
+            const tableInfo = await c.env.DB.prepare(`PRAGMA table_info(raw_mails)`).all();
+            if (!tableInfo.results?.some((col: any) => col.name === 'is_unread')) {
+                await c.env.DB.exec(
+                    `ALTER TABLE raw_mails ADD COLUMN is_unread INTEGER;`
+                );
+            }
+            // original_recipient: inferred pre-forwarding recipient, used by
+            // /admin/mails filtering. Index enables exact lookups without scans.
+            if (!tableInfo.results?.some((col: any) => col.name === 'original_recipient')) {
                 await c.env.DB.exec(`ALTER TABLE raw_mails ADD COLUMN original_recipient TEXT;`);
             }
             await c.env.DB.exec(
@@ -237,11 +255,13 @@ export default {
     },
     getVersion: async (c: Context<HonoCustomType>) => {
         const version = await utils.getSetting(c, CONSTANTS.DB_VERSION_KEY);
+        const sizeResult = await c.env.DB.prepare("SELECT 1").run();
         return c.json({
             need_initialization: !version,
             need_migration: version && version != CONSTANTS.DB_VERSION,
             current_db_version: version,
-            code_db_version: CONSTANTS.DB_VERSION
+            code_db_version: CONSTANTS.DB_VERSION,
+            database_size: sizeResult.meta.size_after ?? null
         });
     },
 }

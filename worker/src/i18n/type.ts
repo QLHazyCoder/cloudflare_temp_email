@@ -1,9 +1,15 @@
 export type LocaleMessages = {
+    InvalidRequestBodyMsg: string
+    InvalidWebhookFilterMsg: string
+    WebhookFilterEvaluationFailedMsg: string
+    InvalidMailIdMsg: string
+    MailNotFoundMsg: string
     CustomAuthPasswordMsg: string
     UserTokenExpiredMsg: string
     UserAcceesTokenExpiredMsg: string
     UserRoleIsNotAdminMsg: string
     NeedAdminPasswordMsg: string
+    AdminApiIpNotAllowedMsg: string
 
     KVNotAvailableMsg: string
     DBNotAvailableMsg: string
@@ -18,6 +24,10 @@ export type LocaleMessages = {
     InvalidAddressMsg: string
     InvalidAddressCredentialMsg: string
     UserDeleteEmailDisabledMsg: string
+
+    RedeemCodeUnavailableMsg: string
+    RedeemCodeInvalidMsg: string
+    RedeemRoleConflictMsg: string
 
     UserNotFoundMsg: string
     UserAlreadyExistsMsg: string
@@ -81,6 +91,7 @@ export type LocaleMessages = {
     EnableSendMailForDomainMsg: string
     InvalidCleanupConfigMsg: string
     InvalidCleanTypeMsg: string
+    CleanupFailedMsg: string
     EnableKVForMailVerifyMsg: string
     VerifyMailDomainInvalidMsg: string
     InvalidMaxAddressCountMsg: string
@@ -172,4 +183,10 @@ export type LocaleMessages = {
     TgNoPermissionViewMailMsg: string
     TgBotTokenRequiredMsg: string
     TgLangFeatureDisabledMsg: string
+    TgAiExtractResultMsg: string
+    TgAiExtractAuthCodeMsg: string
+    TgAiExtractAuthLinkMsg: string
+    TgAiExtractServiceLinkMsg: string
+    TgAiExtractSubscriptionLinkMsg: string
+    TgAiExtractOtherLinkMsg: string
 }

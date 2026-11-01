@@ -21,6 +21,7 @@ services:
       retries: 20
 
   worker-subdomain:
+    profiles: [api]
     build:
       context: ..
       dockerfile: e2e/Dockerfile.worker
@@ -37,12 +38,13 @@ services:
       retries: 20
 
   worker-env-off:
+    profiles: [api, browser]
     build:
       context: ..
       dockerfile: e2e/Dockerfile.worker
     ports:
       - "8790:8790"
-    command: ["pnpm", "exec", "wrangler", "dev", "--port", "8790", "--ip", "0.0.0.0"]
+    command: ["pnpm", "exec", "wrangler", "dev", "--port", "8790", "--ip", "0.0.0.0", "--test-scheduled"]
     volumes:
       - ./fixtures/wrangler.toml.e2e.env-off:/app/worker/wrangler.toml:ro
     depends_on:
@@ -55,6 +57,7 @@ services:
       retries: 20
 
   worker-gzip:
+    profiles: [api]
     build:
       context: ..
       dockerfile: e2e/Dockerfile.worker
@@ -73,6 +76,7 @@ services:
       retries: 20
 
   worker-send-mail-domain:
+    profiles: [api]
     build:
       context: ..
       dockerfile: e2e/Dockerfile.worker
@@ -90,7 +94,27 @@ services:
       start_period: 10s
       retries: 20
 
+  worker-site-password:
+    profiles: [api]
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.worker
+      args:
+        WRANGLER_TOML: e2e/fixtures/wrangler.toml.e2e.site-password
+    ports:
+      - "8792:8792"
+    command: ["pnpm", "exec", "wrangler", "dev", "--port", "8792", "--ip", "0.0.0.0"]
+    depends_on:
+      - mailpit
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-H", "x-custom-auth: e2e-site-pass", "http://localhost:8792/health_check"]
+      interval: 3s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+
   frontend:
+    profiles: [browser, webhook]
     build:
       context: ..
       dockerfile: e2e/Dockerfile.frontend
@@ -100,7 +124,22 @@ services:
       worker:
         condition: service_healthy
 
+  frontend-env-off:
+    profiles: [browser]
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.frontend
+    ports:
+      - "5174:5174"
+    command: ["pnpm", "exec", "vite", "--port", "5174", "--host", "0.0.0.0"]
+    environment:
+      VITE_WORKER_URL: http://worker-env-off:8790
+    depends_on:
+      worker-env-off:
+        condition: service_healthy
+
   smtp-proxy:
+    profiles: [smtp-proxy]
     build:
       context: ../smtp_proxy_server
       dockerfile: dockerfile
@@ -116,6 +155,7 @@ services:
         condition: service_healthy
 
   smtp-proxy-tls:
+    profiles: [smtp-proxy]
     build:
       context: ../smtp_proxy_server
       dockerfile: dockerfile
@@ -141,13 +181,18 @@ services:
     build:
       context: ..
       dockerfile: e2e/Dockerfile.e2e
+    command: ["--project=${PLAYWRIGHT_PROJECT:-*}"]
     environment:
+      RUN_UNIT_TESTS: ${RUN_UNIT_TESTS:-true}
+      PLAYWRIGHT_PROJECT: ${PLAYWRIGHT_PROJECT:-*}
       WORKER_URL: http://worker:8787
       WORKER_URL_SUBDOMAIN: http://worker-subdomain:8789
       WORKER_URL_ENV_OFF: http://worker-env-off:8790
       WORKER_GZIP_URL: http://worker-gzip:8788
       WORKER_URL_SEND_MAIL_DOMAIN: http://worker-send-mail-domain:8791
+      WORKER_URL_SITE_PASSWORD: http://worker-site-password:8792
       FRONTEND_URL: https://frontend:5173
+      FRONTEND_URL_ENV_OFF: https://frontend-env-off:5174
       MAILPIT_API: http://mailpit:8025/api
       SMTP_PROXY_HOST: smtp-proxy
       SMTP_PROXY_SMTP_PORT: "8025"
@@ -161,18 +206,31 @@ services:
         condition: service_healthy
       worker-subdomain:
         condition: service_healthy
+        required: false
       worker-env-off:
         condition: service_healthy
+        required: false
       worker-gzip:
         condition: service_healthy
+        required: false
       worker-send-mail-domain:
         condition: service_healthy
+        required: false
+      worker-site-password:
+        condition: service_healthy
+        required: false
       frontend:
         condition: service_started
+        required: false
+      frontend-env-off:
+        condition: service_started
+        required: false
       smtp-proxy:
         condition: service_started
+        required: false
       smtp-proxy-tls:
         condition: service_started
+        required: false
     volumes:
       - ./test-results:/app/e2e/test-results
       - ./playwright-report:/app/e2e/playwright-report

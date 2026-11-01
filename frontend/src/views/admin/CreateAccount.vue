@@ -14,13 +14,48 @@ const message = useMessage()
 const { t } = useScopedI18n('views.admin.CreateAccount')
 
 const enablePrefix = ref(true)
-const enableRandomSubdomain = ref(false)
+const subdomainMode = ref("normal")
+const customSubdomain = ref("")
 const emailName = ref("")
 const emailDomain = ref("")
 const showReultModal = ref(false)
 const result = ref("")
 const addressPassword = ref("")
 const createdAddress = ref("")
+
+const addressRegex = computed(() => {
+    try {
+        if (openSettings.value.addressRegex) {
+            return new RegExp(openSettings.value.addressRegex, 'g');
+        }
+    } catch (error) {
+        console.error(error);
+        message.error(`Invalid addressRegex: ${openSettings.value.addressRegex}`);
+    }
+    return /[^a-z0-9]/g;
+});
+
+const generateNameLoading = ref(false);
+const generateName = async () => {
+    try {
+        generateNameLoading.value = true;
+        const { faker } = await import('https://esm.sh/@faker-js/faker');
+        emailName.value = faker.internet.email()
+            .split('@')[0]
+            .replace(/\s+/g, '.')
+            .replace(/\.{2,}/g, '.')
+            .replace(addressRegex.value, '')
+            .toLowerCase();
+        // support maxAddressLen
+        if (emailName.value.length > openSettings.value.maxAddressLen) {
+            emailName.value = emailName.value.slice(0, openSettings.value.maxAddressLen);
+        }
+    } catch (error) {
+        message.error(error.message || "error");
+    } finally {
+        generateNameLoading.value = false;
+    }
+};
 
 const canUseRandomSubdomain = computed(() => {
     if (!emailDomain.value) {
@@ -31,7 +66,7 @@ const canUseRandomSubdomain = computed(() => {
 
 watch(canUseRandomSubdomain, (enabled) => {
     if (!enabled) {
-        enableRandomSubdomain.value = false
+        subdomainMode.value = "normal"
     }
 })
 
@@ -41,13 +76,16 @@ const newEmail = async () => {
         return
     }
     try {
+        const domain = subdomainMode.value === "custom"
+            ? `${customSubdomain.value.trim()}.${emailDomain.value}`
+            : emailDomain.value
         const res = await api.fetch(`/admin/new_address`, {
             method: 'POST',
             body: JSON.stringify({
                 enablePrefix: enablePrefix.value,
-                enableRandomSubdomain: enableRandomSubdomain.value,
+                enableRandomSubdomain: subdomainMode.value === "random",
                 name: emailName.value,
-                domain: emailDomain.value,
+                domain,
             })
         })
         result.value = res["jwt"];
@@ -77,26 +115,44 @@ onMounted(async () => {
                 <n-switch v-model:value="enablePrefix" :round="false" />
             </n-form-item-row>
             <n-form-item-row :label="t('address')">
-                <n-input-group>
-                    <n-input-group-label v-if="enablePrefix && openSettings.prefix">
-                        {{ openSettings.prefix }}
-                    </n-input-group-label>
-                    <n-input v-model:value="emailName" />
-                    <n-input-group-label>@</n-input-group-label>
-                    <n-select v-model:value="emailDomain" :consistent-menu-width="false"
-                        :options="openSettings.domains" />
-                </n-input-group>
+                <n-spin :show="generateNameLoading" style="width: 100%;">
+                    <div>
+                        <n-button @click="generateName" style="margin-bottom: 10px;">
+                            {{ t('generateName') }}
+                        </n-button>
+                        <n-input-group>
+                            <n-input-group-label v-if="enablePrefix && openSettings.prefix">
+                                {{ openSettings.prefix }}
+                            </n-input-group-label>
+                            <n-input v-model:value="emailName" />
+                            <n-input-group-label>@</n-input-group-label>
+                            <n-select v-model:value="emailDomain" :consistent-menu-width="false"
+                                :options="openSettings.domains" />
+                        </n-input-group>
+                    </div>
+                </n-spin>
             </n-form-item-row>
             <n-form-item-row v-if="canUseRandomSubdomain">
-                <n-checkbox v-model:checked="enableRandomSubdomain">
-                    {{ t('enableRandomSubdomain') }}
-                </n-checkbox>
-                <p style="margin: 8px 0 0; opacity: 0.75;">
-                    {{ t('randomSubdomainTip') }}
-                </p>
+                <div style="width: 100%;">
+                    <n-radio-group v-model:value="subdomainMode">
+                        <n-space vertical>
+                            <n-radio value="normal">{{ t('normalSubdomain') }}</n-radio>
+                            <n-radio value="random">{{ t('enableRandomSubdomain') }}</n-radio>
+                            <n-radio value="custom">{{ t('enableCustomSubdomain') }}</n-radio>
+                        </n-space>
+                    </n-radio-group>
+                    <p v-if="subdomainMode === 'random'" style="margin: 8px 0 0; opacity: 0.75;">
+                        {{ t('randomSubdomainTip') }}
+                    </p>
+                    <n-input-group v-if="subdomainMode === 'custom'" style="margin-top: 8px;">
+                        <n-input v-model:value="customSubdomain" />
+                        <n-input-group-label>.{{ emailDomain }}</n-input-group-label>
+                    </n-input-group>
+                </div>
             </n-form-item-row>
-            <n-button @click="newEmail" type="primary" block :loading="loading">
-                {{ t('creatNewEmail') }}
+            <n-button @click="newEmail" type="primary" block :loading="loading"
+                :disabled="subdomainMode === 'custom' && !customSubdomain.trim()">
+                {{ t('createEmailAddress') }}
             </n-button>
         </n-card>
     </div>

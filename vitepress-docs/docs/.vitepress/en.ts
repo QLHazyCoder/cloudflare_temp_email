@@ -140,6 +140,7 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
             collapsed: false,
             items: [
                 { text: 'Worker Variables', link: 'worker-vars' },
+                { text: 'Frontend Variables', link: 'frontend-vars' },
                 { text: 'Configure Email Sending', link: 'config-send-mail' },
             ]
         },
@@ -169,6 +170,7 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
                 { text: 'Configure S3 Attachments', link: 'feature/s3-attachment' },
                 { text: 'Configure WASM Email Parser', link: 'feature/mail_parser_wasm_worker' },
                 { text: 'Enhance with Other Workers', link: 'feature/another-worker-enhanced' },
+                { text: 'Configure Redemption Codes', link: 'feature/redeem-code' },
                 { text: 'Add Google Ads', link: 'feature/google-ads.md' },
             ]
         },
