@@ -6,9 +6,11 @@
   <a href="CHANGELOG_EN.md">English</a>
 </p>
 
-## q1.9.1(main)
+## q1.9.2(main)
 
 ### Features
+
+- feat: |Mail API| 优化 `/admin/mails` 的 `original_recipient` 精确查询，减少注册邮箱查信时无关 MIME 邮件的解压，避免 Cloudflare Worker 资源超限
 
 - feat: |Mail API| 为 `raw_mails` 新增通用字段 `original_recipient`，从可信邮件头和转发痕迹中推断原始/转发前收件邮箱，并保持 `/admin/mails` 现有 `address` 查询语义不变
 - feat: |Mail API| `/admin/mails` 新增可选查询参数 `original_recipient`，在数据库中按推断出的原始收件邮箱精确筛选（忽略大小写），可与 `address` 同时使用；按注册邮箱查信的客户端只会拿到并解压目标邮箱的邮件，避免无筛选分页解压过多邮件导致 Worker 超出资源限制（Error 1102）

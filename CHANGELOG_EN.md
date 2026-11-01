@@ -6,9 +6,11 @@
   <a href="CHANGELOG_EN.md">English</a>
 </p>
 
-## q1.9.1(main)
+## q1.9.2(main)
 
 ### Features
+
+- feat: |Mail API| Optimize exact `/admin/mails` filtering by `original_recipient` so registration-email lookups decompress fewer unrelated MIME messages and avoid Cloudflare Worker resource limits
 
 - feat: |Mail API| Add the generic `original_recipient` field to `raw_mails`, inferred from trusted mail headers and forwarding traces while keeping the existing `/admin/mails` `address` query semantics unchanged
 - feat: |Mail API| Add the optional `original_recipient` query parameter to `/admin/mails`, filtering in the database by the inferred original recipient (case-insensitive exact match) and combinable with `address`; clients that look up mail by registration email now receive and decompress only the target mailbox's mail, instead of unfiltered pages that could exceed Worker resource limits (Error 1102)
